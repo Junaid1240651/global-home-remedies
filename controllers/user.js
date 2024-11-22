@@ -87,8 +87,6 @@ const signup = async (req, res) => {
 
 const verifyOtpAndCompleteSignup = async (req, res) => {
   const { email, otp } = req.body;
-  console.log(req.body);
-  console.log(req.session.email);
 
   if (!email || !otp) {
     return res.status(400).json({ message: "Email and OTP are required" });
@@ -163,11 +161,16 @@ const login = async (req, res) => {
       `SELECT * FROM users WHERE username = ?`,
       [username]
     );
-    console.log(userResults);
     
     const user = userResults[0];
     if (!user) {
       return res.status(404).json({ message: "Invalid credentials" });
+    }
+
+    // Compare the provided password with the stored hashed password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: "Invalid password" });
     }
 
     // Check if user account is active
@@ -176,8 +179,6 @@ const login = async (req, res) => {
       const otp = crypto.randomInt(100000, 999999).toString();
 
       // Save the OTP in the session (for session-based OTP)
-      console.log(user.email);
-      
       req.session.otp = otp;
       req.session.email = user.email; // Store the username for OTP verification
       req.session.otpTimestamp = Date.now(); // Store timestamp for OTP validity
@@ -192,12 +193,6 @@ const login = async (req, res) => {
 
       await transporter.sendMail(mailOptions);
       return res.status(200).json({ message: "OTP sent to your email" });
-    }
-
-    // Compare the provided password with the stored hashed password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Invalid password" });
     }
 
     // Generate a JWT token
