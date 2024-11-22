@@ -87,6 +87,8 @@ const signup = async (req, res) => {
 
 const verifyOtpAndCompleteSignup = async (req, res) => {
   const { email, otp } = req.body;
+  console.log(req.body);
+  console.log(req.session.email);
 
   if (!email || !otp) {
     return res.status(400).json({ message: "Email and OTP are required" });
@@ -136,7 +138,7 @@ const verifyOtpAndCompleteSignup = async (req, res) => {
 
     res.status(200).json({
       message: "User successfully verified and registered",
-      user: { id: user.id, email: user.email, username: user.username },
+      user: { id: userRecord[0].id, email: userRecord[0].email, username: userRecord[0].username },
       token: token,
     });
 
@@ -161,6 +163,8 @@ const login = async (req, res) => {
       `SELECT * FROM users WHERE username = ?`,
       [username]
     );
+    console.log(userResults);
+    
     const user = userResults[0];
     if (!user) {
       return res.status(404).json({ message: "Invalid credentials" });
@@ -172,6 +176,8 @@ const login = async (req, res) => {
       const otp = crypto.randomInt(100000, 999999).toString();
 
       // Save the OTP in the session (for session-based OTP)
+      console.log(user.email);
+      
       req.session.otp = otp;
       req.session.email = user.email; // Store the username for OTP verification
       req.session.otpTimestamp = Date.now(); // Store timestamp for OTP validity
