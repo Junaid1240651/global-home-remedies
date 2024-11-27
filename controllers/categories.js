@@ -1,6 +1,26 @@
 import userQuery from "../utils/helper/dbHelper.js";
 import _ from "lodash";
 
+const getAllCategories = async (req, res) => {
+
+  try {
+    // Fetch categories associated with the user
+    const query = "SELECT * FROM categories";
+    const categories = await userQuery(query);
+
+    if (_.isEmpty(categories)) {
+      return res.status(404).json({ message: "No categories found for this user." });
+    }
+
+    res.status(200).json(categories);
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: "Database error while retrieving categories.", details: err });
+  }
+};
+
+
 const postCategories = async (req, res) => {
   const { name, description } = req.body;
 
@@ -111,4 +131,5 @@ export default {
   postCategories,
   updateCategories,
   deleteCategories,
+  getAllCategories
 };
