@@ -22,22 +22,23 @@ const getAllCategories = async (req, res) => {
 
 
 const postCategories = async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description,img } = req.body;
 
-  if (_.isEmpty(name) || _.isEmpty(description)) {
+  if (_.isEmpty(name) || _.isEmpty(description) || _.isEmpty(img)) {
     return res.status(400).json({ message: "All required fields" });
   }
   // Validation
-  if (!_.isString(name) || _.isEmpty(name)) {
+  if (!_.isString(name) || _.isEmpty(name) || !_.isString(description) || _.isEmpty(description) || !_.isString(img) || _.isEmpty(img)) {
     return res.status(400).json({
-      error: "Category name is required and should be a non-empty string.",
+      error: "Category name,description,img is required and should be a non-empty string.",
     });
   }
+  
 
   try {
-    const query = "INSERT INTO categories (name, description) VALUES (?, ?)";
-    const result = await userQuery(query, [name, description]);
-    res.status(201).json({ id: result.insertId, name, description });
+    const query = "INSERT INTO categories (name, description, img) VALUES (?, ?, ?)";
+    const result = await userQuery(query, [name, description, img]);
+    res.status(201).json({ id: result.insertId, name, description, img });
   } catch (err) {
     res
       .status(500)
@@ -46,9 +47,9 @@ const postCategories = async (req, res) => {
 };
 const updateCategories = async (req, res) => {
   const { id } = req.params;
-  const { name, description } = req.body;
+  const { name, description, img } = req.body;
 // Check if at least one field is provided
-    if (_.isEmpty(name) && _.isEmpty(description)) {
+    if (_.isEmpty(name) && _.isEmpty(description) && _.isEmpty(img)) {
     return res.status(400).json({ message: "At least one field is required" });
   }
     if (!id || id === "" || id === undefined) {
@@ -78,10 +79,11 @@ const updateCategories = async (req, res) => {
 
     // Update the category
     const query =
-      "UPDATE categories SET name = ?, description = ? WHERE id = ?";
+      "UPDATE categories SET name = ?, description = ?, img = ? WHERE id = ?";
     await userQuery(query, [
       name || existingCategory[0].name,
       description || existingCategory[0].description,
+      img || existingCategory[0].img,
       id,
     ]);
     res.json({ message: `Category ${id} updated successfully.` });
