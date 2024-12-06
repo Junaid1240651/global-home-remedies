@@ -1,3 +1,5 @@
+import dotenv from "dotenv";
+dotenv.config();
 import _ from "lodash";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
@@ -70,13 +72,17 @@ const signup = async (req, res) => {
 
     // Send OTP via email
     const mailOptions = {
-      from: `"Your App Name" <your-email@example.com>`,
+      from: "Global Home Remedies",
       to: email,
-      subject: "Your OTP for Signup",
-      text: `Your OTP is ${otp}. It is valid for 5 minutes.`,
+      subject: "Global Home Remedies OTP ",
+      text: `Your OTP for login is ${otp}. It is valid for 5 minutes.`,
     };
 
-    await transporter.sendMail(mailOptions);
+    transporter.sendMail(mailOptions, (err, info) => {
+      if (err) {
+        return res.status(500).json({ message: "Error sending reset email" });
+      }
+    });
 
     res.status(200).json({ message: "OTP sent to your email" });
   } catch (err) {
@@ -161,7 +167,7 @@ const login = async (req, res) => {
       `SELECT * FROM users WHERE username = ?`,
       [username]
     );
-    
+
     const user = userResults[0];
     if (!user) {
       return res.status(404).json({ message: "Invalid credentials" });
@@ -185,9 +191,9 @@ const login = async (req, res) => {
 
       // Send OTP via email
       const mailOptions = {
-        from: `"Your App Name" <maddison53@ethereal.email>`,
+        from: "Global Home Remedies",
         to: user.email,
-        subject: "Your OTP for Login",
+        subject: "Global Home Remedies OTP ",
         text: `Your OTP for login is ${otp}. It is valid for 5 minutes.`,
       };
 
@@ -195,9 +201,17 @@ const login = async (req, res) => {
       return res.status(200).json({ message: "OTP sent to your email" });
     }
 
+    const token = jwt.sign(
+      { userId: userResults[0].id, userType: userResults[0].user_type },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
     // Generate a JWT token
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 3600000, // 1 hour expiration for the cookie
     });
 
     // Set the JWT token as a session cookie
@@ -388,12 +402,12 @@ const deleteAccount = async (req, res) => {
 
 
 const transporter = nodemailer.createTransport({
-  host: "smtp.ethereal.email",
-  port: 587,
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
   secure: false, // true for port 465, false for other ports
   auth: {
-    user: "maddison53@ethereal.email",
-    pass: "jn7jnAPss4f63QBp6D",
+    user: process.env.SMTP_EMAIL,
+    pass: process.env.SMTP_EMAIL_PASS,
   },
 });
 
@@ -479,6 +493,89 @@ const resetPassword = async (req, res) => {
   res.status(200).json({ message: "Password reset successfully" });
 };
 
+const googleAuthSignUp = async (req, res) => {
+
+  if (!req.user) {
+    return res.status(400).json({ message: "User authentication failed" });
+  }
+
+  const email = req.user.emails[0].value;
+  const profile_picture = req.user.photos[0].value;
+  const first_name = req.user.name.givenName;
+  const last_name = req.user.name.familyName;
+  const username = first_name + last_name;
+  const social_login_type = "Gmail";
+  const user_type = "visitor";
+  const status = "active";
+  // Check if the user already exists
+  let userRecord = await userQuery(`SELECT * FROM users WHERE email = ?`, [email]);
+  if (userRecord.length > 0) {
+
+    // Generate a JWT token
+    const token = jwt.sign(
+      { userId: userRecord[0].id, userType: userRecord[0].user_type, email: userRecord[0].email, username: userRecord[0].username },
+      process.env.JWT_SECRET,
+      { expiresIn: "1h" }
+    );
+
+    // Set the JWT token as a cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 3600000, // 1 hour expiration for the cookie
+    });
+
+    return res.redirect(`http://localhost:3000/dashboard?token=${token}`);
+    // return res.status(200).json({
+    //   message: "User Already Exists",
+    //   user: { id: userRecord[0].id, email: userRecord[0].email, username: userRecord[0].username },
+    //   token: token,
+    // });
+  }
+
+  // Save the user details in the database
+  userRecord = await userQuery(
+    `
+      INSERT INTO users 
+        (first_name, last_name, email, username, social_login_type, profile_picture, user_type, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+      `,
+    [
+      first_name,
+      last_name,
+      email,
+      username,
+      social_login_type,
+      profile_picture,
+      user_type,
+      status
+    ]
+  );
+  userRecord = await userQuery(`SELECT * FROM users WHERE id = ?`, [userRecord.insertId]);
+
+  // Generate a JWT token
+  const token = jwt.sign(
+    { userId: userRecord[0].id, userType: userRecord[0].user_type, email: userRecord[0].email, username: userRecord[0].username },
+    process.env.JWT_SECRET,
+    { expiresIn: "1h" }
+  );
+
+  // Set the JWT token as a cookie
+  res.cookie("token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 3600000, // 1 hour expiration for the cookie
+  });
+
+  // return res.status(200).json({
+  //   message: "User successfully verified and registered",
+  //   user: { id: userRecord[0].id, email: userRecord[0].email, username: userRecord[0].username },
+  //   token: token,
+  // });
+
+  return res.redirect(`http://localhost:3000/dashboard?token=${token}`);
+
+};
 
 export default {
   signup,
@@ -488,5 +585,7 @@ export default {
   deleteAccount,
   forgotPassword,
   resetPassword,
-  verifyOtpAndCompleteSignup
+  verifyOtpAndCompleteSignup,
+  googleAuthSignUp
 };
+

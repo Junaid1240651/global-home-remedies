@@ -1,9 +1,14 @@
+import dotenv from "dotenv";
+dotenv.config();
+import passport from 'passport';
+import googleAuth from "./socialAuth/googleAuth.js";
 import express from "express";
 import cors from "cors";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import { dbConnection } from "./db/connection.js";
+import userController from "./controllers/user.js"; 
 
 // Route imports
 import userRoutes from "./routes/user.js";
@@ -17,8 +22,6 @@ import communityComments from "./routes/communityComments.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
-
-// Establish DB connection
 const con = dbConnection();
 
 // Middleware
@@ -43,7 +46,22 @@ app.use(
   })
 );
 
+app.use(passport.initialize());
+app.use(passport.session());
+
 // Routes
+app.get('/api/user/googleAuth', passport.authenticate('google', { scope: ['profile', 'email'] }));
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  async (req, res) => {
+    try {
+      await userController.googleAuthSignUp(req, res); // Handles the response itself
+    } catch (err) {
+      res.status(500).json({ message: "An unexpected error occurred", error: err.message });
+    }
+  }
+);
+
 app.use("/api/user", userRoutes);
 app.use("/api/user", notificationRoutes); 
 app.use("/api/user", categoriesRoutes); 
