@@ -32,14 +32,15 @@ const getAllRemedies = async (req, res) => {
         u.mobile_number
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
-      JOIN users u ON r.user_id = u.id`,
+      JOIN users u ON r.user_id = u.id
+      WHERE r.status = 'approved'`,
     );
 
     // Check if the user has any remedies
     if (remedies.length === 0) {
       return res
         .status(404)
-        .json({ message: "No remedies found" });
+        .json({ message: "Remedy not found or Remedy is not Approved." });
     }
 
     // Send the list of remedies
@@ -94,14 +95,14 @@ const getRemedies = async (req, res) => {
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
-      WHERE r.id = ?`,
+      Where r.id = ? AND r.status = 'approved'`,
       id
     );
 
     // Check if the remedy exists and belongs to the logged-in user
     if (remedy.length === 0) {
       return res.status(404).json({
-        error: "Remedy not found",
+        error: "Remedy not found or Remedy is not Approved.",
       });
     }
 
