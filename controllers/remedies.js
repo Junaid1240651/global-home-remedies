@@ -12,15 +12,34 @@ const getAllRemedies = async (req, res) => {
   try {
     // Fetch all remedies belonging to the logged-in user
     const remedies = await userQuery(
-      "SELECT * FROM remedies WHERE user_id = ?",
-      [loggedInUserId]
+      `SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video, 
+        r.created_at, 
+        r.updated_at,
+        c.id AS category_id,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name, 
+        u.email, 
+        u.mobile_number
+      FROM remedies r
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id`,
     );
 
     // Check if the user has any remedies
     if (remedies.length === 0) {
       return res
         .status(404)
-        .json({ message: "No remedies found for the logged-in user." });
+        .json({ message: "No remedies found" });
     }
 
     // Send the list of remedies
@@ -55,14 +74,34 @@ const getRemedies = async (req, res) => {
   try {
     // Fetch the remedy and ensure it belongs to the logged-in user
     const remedy = await userQuery(
-      "SELECT * FROM remedies WHERE id = ? AND user_id = ?",
-      [id, loggedInUserId]
+      `SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video, 
+        r.created_at, 
+        r.updated_at,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name, 
+        u.email, 
+        u.mobile_number
+      FROM remedies r
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE r.id = ?`,
+      id
     );
 
     // Check if the remedy exists and belongs to the logged-in user
     if (remedy.length === 0) {
       return res.status(404).json({
-        error: "Remedy not found or you do not have permission to view it.",
+        error: "Remedy not found",
       });
     }
 

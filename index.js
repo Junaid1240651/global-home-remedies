@@ -19,6 +19,7 @@ import remediesRoutes from "./routes/remedies.js";
 import reviewsRoutes from "./routes/reviews.js";
 import aiFilterLogsRoutes from "./routes/aiFilterLogs.js";
 import communityComments from "./routes/communityComments.js";
+import fileUpload from "./routes/fileUpload.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -70,6 +71,7 @@ app.use("/api/user", remediesRoutes);
 app.use("/api/user", reviewsRoutes);
 app.use("/api/user", aiFilterLogsRoutes);
 app.use("/api/user", communityComments);
+app.use("/api/user", fileUpload);
 
 // Error handling
 app.use((err, req, res, next) => {

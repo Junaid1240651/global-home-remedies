@@ -142,7 +142,7 @@ const verifyOtpAndCompleteSignup = async (req, res) => {
 
     res.status(200).json({
       message: "User successfully verified and registered",
-      user: { id: userRecord[0].id, email: userRecord[0].email, username: userRecord[0].username },
+      user: { id: userRecord[0].id, email: userRecord[0].email, username: userRecord[0].username, mobile_number: userRecord[0].mobile_number },
       token: token,
     });
 
@@ -224,7 +224,7 @@ const login = async (req, res) => {
 
     res.status(200).json({
       message: "Login successful",
-      user: { id: user.id, email: user.email, username: user.username, token: token },
+      user: { id: user.id, email: user.email, username: user.username, token: token, mobile_number: user.mobile_number},
     });
   } catch (err) {
     console.error("Error during login:", err);
