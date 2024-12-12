@@ -153,13 +153,55 @@ const verifyOtpAndCompleteSignup = async (req, res) => {
 };
 
 const login = async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, token } = req.body;
 
-  if (!username || !password) {
-    return res
-      .status(400)
-      .json({ message: "Username and password are required" });
-  }
+  if (token) {
+    try {
+      // Verify the token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Fetch user details from the database using the decoded userId
+      const userResults = await userQuery(
+        `SELECT * FROM users WHERE id = ?`,
+        [decoded.userId]
+      );
+
+      const user = userResults[0];
+      if (!user) {
+        return res.status(404).json({ message: "Invalid token" });
+      }
+
+      // Check if the user account is active
+      if (user.status !== "active") {
+        return res.status(403).json({ message: "Account is not active" });
+      }
+
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        maxAge: 3600000, // 1 hour expiration for the cookie
+      });
+
+      return res.status(200).json({
+        message: "Login successful",
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          token,
+          mobile_number: user.mobile_number,
+        },
+      });
+    } catch (err) {
+      console.error("Error during token-based login:", err);
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+  } else {
+    if (!username || !password) {
+      return res
+        .status(400)
+        .json({ message: "Username and password are required" });
+    }
 
   try {
     // Check if the user with the provided username exists
@@ -230,6 +272,7 @@ const login = async (req, res) => {
     console.error("Error during login:", err);
     res.status(500).json({ message: "Internal server error" });
   }
+}
 };
 
 const getProfile = async (req, res) => {

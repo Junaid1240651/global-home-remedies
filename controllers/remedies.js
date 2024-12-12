@@ -20,14 +20,18 @@ const getAllRemedies = async (req, res) => {
         r.application_process, 
         r.benefits, 
         r.photo, 
-        r.video, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.status,
         r.created_at, 
         r.updated_at,
         c.id AS category_id,
         c.name AS category_name,
         u.id AS user_id,
         u.first_name,
-        u.last_name, 
+        u.last_name,
+        u.country, 
         u.email, 
         u.mobile_number
       FROM remedies r
@@ -83,13 +87,17 @@ const getRemedies = async (req, res) => {
         r.application_process, 
         r.benefits, 
         r.photo, 
-        r.video, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.status, 
         r.created_at, 
         r.updated_at,
         c.name AS category_name,
         u.id AS user_id,
         u.first_name,
-        u.last_name, 
+        u.last_name,
+        u.country,
         u.email, 
         u.mobile_number
       FROM remedies r
@@ -113,6 +121,344 @@ const getRemedies = async (req, res) => {
     res.status(500).json({
       error: "Database error while retrieving remedy.",
       details: error.message,
+    });
+  }
+};
+
+const getRemediesByCategoryId = async (req, res) => {
+  const { id } = req.params; // Category ID to retrieve
+  
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res
+      .status(400)
+      .json({ error: "Invalid category ID. It should be a positive integer." });
+  }
+  
+  try {
+    const remedies = await userQuery(
+      `SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.status,
+        r.created_at, 
+        r.updated_at,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name,
+        u.country,
+        u.email, 
+        u.mobile_number
+      FROM remedies r
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE r.category_id = ? AND r.status = 'approved'`,
+      id
+    );
+    if (remedies.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Remedy not found or Remedy is not Approved." });
+    }
+    res.json({ remedies });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Database error while retrieving remedies.",
+      details: error.message,
+    });
+  }
+};
+
+const getTrendingRemidies = async (req, res) => {
+  try {
+    const userId = req.user.id; // Assuming req.user.id is the ID of the logged-in user
+
+    const trendingRemedies = await userQuery(
+      `SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.created_at, 
+        r.updated_at,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name,
+        u.country, 
+        u.email, 
+        u.mobile_number,
+        (SELECT COUNT(*) FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id) AS is_bookmarked
+      FROM remedies r
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE r.status = 'approved' AND r.likes > 10
+      ORDER BY r.created_at DESC
+      LIMIT 100`,
+      [userId]
+    );
+
+    if (trendingRemedies.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No trending remedies found" });
+    }
+
+    res.status(200).json({ trendingRemedies });
+  } catch (error) {
+    res.status(500).json({
+      error: "Database error while retrieving trending remedies.",
+      details: error.message,
+    });
+  }
+};
+
+const likeRemedies = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user;
+
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Remedy ID is required" });
+  }
+
+  // Validate input
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res.status(400).json({
+      error: "Invalid remedy ID. It should be a positive integer.",
+    });
+  }
+
+  try {
+    // Check if the remedy exists
+    const remedyCheckQuery =
+      "SELECT * FROM remedies WHERE id = ?";
+    const remedyResult = await userQuery(remedyCheckQuery, [id]);
+
+    // If the remedy is not found
+    if (remedyResult.length === 0) {
+      return res.status(404).json({ error: "Remedy not found." });
+    }
+
+    // Check if the user has already liked the remedyç
+    const likeCheckQuery =
+      "SELECT * FROM likes WHERE user_id = ? AND remedy_id = ?";
+    const likeResult = await userQuery(likeCheckQuery, [userId, id]);
+
+    // If the user has already liked the remedy
+    if (likeResult.length > 0) {
+      return res.status(400).json({ error: "You have already liked this remedy." });
+    }
+
+    // If the user has not liked the remedy, insert the like
+    const likeQuery = "INSERT INTO likes (user_id, remedy_id) VALUES (?, ?)";
+    await userQuery(likeQuery, [userId, id]);
+
+    // update the dislike table if the user has like the remedy
+
+    const dislikeCheckQuery = "SELECT * FROM dislikes WHERE user_id = ? AND remedy_id = ?";
+    const dislikeResult = await userQuery(dislikeCheckQuery, [userId, id]);
+
+    if (dislikeResult.length > 0) {
+      const dislikeDeleteQuery = "DELETE FROM dislikes WHERE user_id = ? AND remedy_id = ?";
+      await userQuery(dislikeDeleteQuery, [userId, id]);
+    }
+
+    //update the total likes in the remedies table and decrement the dislikes if the user has disliked the remedy
+    if (dislikeResult.length > 0) {
+      const dislikeCountQuery = "UPDATE remedies SET dislikes = dislikes - 1, likes = likes + 1 WHERE id = ?";
+      await userQuery(dislikeCountQuery, [id]);
+    } else {
+      const likeCountQuery = "UPDATE remedies SET likes = likes + 1 WHERE id = ?";
+      await userQuery(likeCountQuery, [id]);
+    }
+
+    res.status(201).json({ message: `You have liked remedy ${id}.` });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ error: "Database error while liking remedy", details: err });
+  }
+};
+
+const dislikeRemedies = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user;
+
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Remedy ID is required" });
+  }
+
+  // Validate input
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res.status(400).json({
+      error: "Invalid remedy ID. It should be a positive integer.",
+    });
+  }
+
+  try {
+    // Check if the remedy exists
+    const remedyCheckQuery =
+      "SELECT * FROM remedies WHERE id = ?";
+    const remedyResult = await userQuery(remedyCheckQuery, [id]);
+
+    // If the remedy is not found
+    if (remedyResult.length === 0) {
+      return res.status(404).json({ error: "Remedy not found." });
+    }
+
+    // Check if the user has already liked the remedy
+    const likeCheckQuery =
+      "SELECT * FROM likes WHERE user_id = ? AND remedy_id = ?";
+    const likeResult = await userQuery(likeCheckQuery, [userId, id]);
+
+    // If the user has not liked the remedy
+    if (likeResult.length > 0) {
+      // If the user has liked the remedy, delete the like
+      const likeQuery = "DELETE FROM likes WHERE user_id = ? AND remedy_id = ?";
+      await userQuery(likeQuery, [userId, id]);
+    }
+
+    // If the user has liked the remedy, delete the like
+    const dislikeQuery = "DELETE FROM likes WHERE user_id = ? AND remedy_id = ?";
+    await userQuery(dislikeQuery, [userId, id]);
+
+    //and then add inside dislikes table
+    const dislikeInsertQuery = "INSERT INTO dislikes (user_id, remedy_id) VALUES (?, ?)";
+    await userQuery(dislikeInsertQuery, [userId, id]);
+
+    //update the total dislikes in the remedies table and decrement the likes if the user has liked the remedy
+    if (likeResult.length > 0) {
+      const likeCountQuery = "UPDATE remedies SET likes = likes - 1, dislikes = dislikes + 1 WHERE id = ?";
+      await userQuery(likeCountQuery, [id]);
+    } else {
+      const dislikeCountQuery = "UPDATE remedies SET dislikes = dislikes + 1 WHERE id = ?";
+      await userQuery(dislikeCountQuery, [id]);
+    }
+
+    res.status(200).json({ message: `You have disliked remedy ${id}.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while disliking remedy", details: err });
+  }
+};
+
+const bookmarkRemedies = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user;
+
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Remedy ID is required" });
+  }
+
+  // Validate input
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res.status(400).json({
+      error: "Invalid remedy ID. It should be a positive integer.",
+    });
+  }
+
+  try {
+    // Check if the remedy exists
+    const remedyCheckQuery = "SELECT * FROM remedies WHERE id = ?";
+    const remedyResult = await userQuery(remedyCheckQuery, [id]);
+
+    // If the remedy is not found
+    if (remedyResult.length === 0) {
+      return res.status(404).json({ error: "Remedy not found." });
+    }
+
+    // Check if the user has already bookmarked the remedy
+    const bookmarkCheckQuery = "SELECT * FROM bookmarks WHERE user_id = ? AND remedy_id = ?";
+    const bookmarkResult = await userQuery(bookmarkCheckQuery, [userId, id]);
+
+    // If the user has already bookmarked the remedy
+    if (bookmarkResult.length > 0) {
+      return res.status(400).json({ error: "You have already bookmarked this remedy." });
+    }
+
+    // If the user has not bookmarked the remedy, insert the bookmark
+    const bookmarkQuery = "INSERT INTO bookmarks (user_id, remedy_id) VALUES (?, ?)";
+    await userQuery(bookmarkQuery, [userId, id]);
+
+    res.status(201).json({ message: `You have bookmarked remedy ${id}.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while bookmarking remedy", details: err });
+  }
+};
+
+const getBookmarkRemedies = async (req, res) => {
+  const { userId } = req.user;
+
+  try {
+    // Query to fetch bookmarked remedies with user and category details
+    const query = `
+      SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.created_at, 
+        r.updated_at,
+        c.id AS category_id,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name,
+        u.country, 
+        u.email, 
+        u.mobile_number
+      FROM remedies r
+      JOIN bookmarks b ON r.id = b.remedy_id
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE b.user_id = ?
+    `;
+
+    const bookmarkedRemedies = await userQuery(query, [userId]);
+
+    // Append `is_favorite: true` to each remedy object
+    const response = bookmarkedRemedies.map((remedy) => ({
+      ...remedy,
+      is_bookmark: true,
+    }));
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Bookmarked remedies fetched successfully.',
+      data: response,
+    });
+  } catch (err) {
+    console.error("Error fetching bookmarked remedies:", err);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch bookmarked remedies.',
+      details: err,
     });
   }
 };
@@ -374,4 +720,10 @@ export default {
   postRemedies,
   updateRemedies,
   deleteRemedies,
+  getRemediesByCategoryId,
+  getTrendingRemidies,
+  likeRemedies,
+  dislikeRemedies,
+  bookmarkRemedies,
+  getBookmarkRemedies,
 };
