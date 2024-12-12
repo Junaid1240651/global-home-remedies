@@ -33,11 +33,27 @@ const getAllRemedies = async (req, res) => {
         u.last_name,
         u.country, 
         u.email, 
-        u.mobile_number
+        u.mobile_number,
+        EXISTS (
+          SELECT 1
+          FROM likes l
+          WHERE l.user_id = ? AND l.remedy_id = r.id
+        ) AS isLike,
+        EXISTS (
+          SELECT 1
+          FROM bookmarks b
+          WHERE b.user_id = ? AND b.remedy_id = r.id
+        ) AS isBookmark,
+         EXISTS (
+          SELECT 1
+          FROM dislikes d
+          WHERE d.user_id = ? AND d.remedy_id = r.id
+        ) AS dislikes
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.status = 'approved'`,
+      [loggedInUserId, loggedInUserId, loggedInUserId]
     );
 
     // Check if the user has any remedies
@@ -99,12 +115,27 @@ const getRemedies = async (req, res) => {
         u.last_name,
         u.country,
         u.email, 
-        u.mobile_number
+        u.mobile_number,
+        EXISTS (
+          SELECT 1 
+          FROM likes l 
+          WHERE l.user_id = ? AND l.remedy_id = r.id
+        ) AS isLike,
+        EXISTS (
+          SELECT 1 
+          FROM bookmarks b 
+          WHERE b.user_id = ? AND b.remedy_id = r.id
+        ) AS isBookmark,
+         EXISTS (
+          SELECT 1
+          FROM dislikes d
+          WHERE d.user_id = ? AND d.remedy_id = r.id
+        ) AS dislikes
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
-      Where r.id = ? AND r.status = 'approved'`,
-      id
+      WHERE r.id = ? AND r.status = 'approved'`,
+      [loggedInUserId, loggedInUserId, loggedInUserId, id]
     );
 
     // Check if the remedy exists and belongs to the logged-in user
@@ -127,7 +158,8 @@ const getRemedies = async (req, res) => {
 
 const getRemediesByCategoryId = async (req, res) => {
   const { id } = req.params; // Category ID to retrieve
-  
+  const loggedInUserId = req.user.userId; // Logged-in user ID from the token or session
+
   if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
     return res
       .status(400)
@@ -156,12 +188,15 @@ const getRemediesByCategoryId = async (req, res) => {
         u.last_name,
         u.country,
         u.email, 
-        u.mobile_number
+        u.mobile_number,
+        (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
+        (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.category_id = ? AND r.status = 'approved'`,
-      id
+      [loggedInUserId, loggedInUserId, loggedInUserId, id]
     );
     if (remedies.length === 0) {
       return res
@@ -178,9 +213,70 @@ const getRemediesByCategoryId = async (req, res) => {
   }
 };
 
+const getRemediesByCountryName = async (req, res) => {
+  const { countryName } = req.params; // Country Name to retrieve
+
+  const loggedInUserId = req.user.userId; // Logged-in user ID from the token or session
+
+  if (!countryName) {
+    return res
+      .status(400)
+      .json({ error: "Country Name is required." });
+  }
+
+  try {
+    const remedies = await userQuery(
+      `SELECT 
+        r.id AS remedy_id, 
+        r.title AS remedy_title, 
+        r.ingredients, 
+        r.preparation_process, 
+        r.application_process, 
+        r.benefits, 
+        r.photo, 
+        r.video,
+        r.likes,
+        r.dislikes,
+        r.status,
+        r.created_at, 
+        r.updated_at,
+        c.name AS category_name,
+        u.id AS user_id,
+        u.first_name,
+        u.last_name,
+        u.country,
+        u.email, 
+        u.mobile_number,
+        (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
+        (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
+      FROM remedies r
+      JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE r.status = 'approved' AND u.country = ?
+      ORDER BY r.likes DESC`,
+      [loggedInUserId, loggedInUserId, loggedInUserId, countryName]
+    );
+
+    if (remedies.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "No remedies found for the specified country or they are not approved." });
+    }
+
+    res.json({ remedies });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      error: "Database error while retrieving remedies.",
+      details: error.message,
+    });
+  }
+};
+
 const getTrendingRemidies = async (req, res) => {
   try {
-    const userId = req.user.id; // Assuming req.user.id is the ID of the logged-in user
+    const userId = req.user.userId; // Assuming req.user.id is the ID of the logged-in user
 
     const trendingRemedies = await userQuery(
       `SELECT 
@@ -194,23 +290,23 @@ const getTrendingRemidies = async (req, res) => {
         r.video,
         r.likes,
         r.dislikes,
+        r.status,
         r.created_at, 
         r.updated_at,
         c.name AS category_name,
         u.id AS user_id,
         u.first_name,
         u.last_name,
-        u.country, 
-        u.email, 
-        u.mobile_number,
-        (SELECT COUNT(*) FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id) AS is_bookmarked
+        (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
+        (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
-      WHERE r.status = 'approved' AND r.likes > 10
-      ORDER BY r.created_at DESC
+      WHERE r.status = 'approved'
+      ORDER BY r.likes DESC
       LIMIT 100`,
-      [userId]
+      [userId, userId, userId]
     );
 
     if (trendingRemedies.length === 0) {
@@ -726,4 +822,5 @@ export default {
   dislikeRemedies,
   bookmarkRemedies,
   getBookmarkRemedies,
+  getRemediesByCountryName,
 };

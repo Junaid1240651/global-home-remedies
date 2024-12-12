@@ -39,17 +39,26 @@ const signup = async (req, res) => {
       return res.status(400).json({ message: "Email already exists" });
     }
 
+    // Check if user already exists with the same username
+    const existingUsername = await userQuery(`SELECT * FROM users WHERE username = ?`, [username]);
+    if (existingUsername.length > 0) {
+      return res.status(400).json({ message: "Username already exists" });
+    }
+
     // Generate OTP
     const otp = crypto.randomInt(100000, 999999).toString();
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Save the OTP and timestamp in the database
+    const otpTimestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
     // Save user details in the database without OTP
     await userQuery(
       `
       INSERT INTO users 
-        (first_name, last_name, email, username, password, mobile_number, social_login_type, profile_picture, country, user_type, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        (first_name, last_name, email, username, password, mobile_number, social_login_type, profile_picture, country, user_type, status, otp, otpTimestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
       `,
       [
         first_name,
@@ -62,13 +71,10 @@ const signup = async (req, res) => {
         profile_picture,
         country,
         user_type,
+        otp,
+        otpTimestamp,
       ]
     );
-
-    // Store the OTP in session
-    req.session.otp = otp;
-    req.session.email = email;  // Store the email in session to link OTP
-    req.session.otpTimestamp = Date.now(); // Store timestamp for OTP validity
 
     // Send OTP via email
     const mailOptions = {
@@ -80,14 +86,14 @@ const signup = async (req, res) => {
 
     transporter.sendMail(mailOptions, (err, info) => {
       if (err) {
-        return res.status(500).json({ message: "Error sending reset email" });
+        console.error("Error sending OTP email:", err);
+        return res.status(500).json({ message: "Error sending OTP email" });
       }
+      res.status(200).json({ message: "OTP sent to your email" });
     });
-
-    res.status(200).json({ message: "OTP sent to your email" });
   } catch (err) {
     console.error("Error during signup OTP:", err);
-    res.status(500).json({ message: "Error while sending OTP" });
+    res.status(500).json({ message: "Error while processing signup" });
   }
 };
 
@@ -99,25 +105,28 @@ const verifyOtpAndCompleteSignup = async (req, res) => {
   }
 
   try {
-    // Check if OTP and email match session data
-    if (req.session.email !== email) {
-      return res.status(400).json({ message: "Email does not match" });
+    // Check if the OTP is valid in the database
+    const userResults = await userQuery(`SELECT * FROM users WHERE email = ?`, [email]);
+    if (userResults.length === 0) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    if (req.session.otp !== otp) {
+    const user = userResults[0];
+    if (user.status === "active") {
+      return res.status(400).json({ message: "User is already verified" });
+    }
+
+    if (user.otp != otp) {
       return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // Check if OTP is expired (5 minutes validity)
-    const otpGeneratedTime = req.session.otpTimestamp || Date.now();
-    if (Date.now() - otpGeneratedTime > 5 * 60 * 1000) {
-      return res.status(400).json({ message: "OTP has expired" });
-    }
+    // Check if the OTP is expired
+    const otpTimestamp = new Date(user.otpTimestamp).getTime();
+    const currentTime = new Date().toISOString().slice(0, 19).replace("T", " ");
 
-    // OTP is valid, clear session OTP
-    delete req.session.otp;
-    delete req.session.email;
-    delete req.session.otpTimestamp;
+    if (currentTime - otpTimestamp > 5 * 60 * 1000) { // 5 minutes
+      return res.status(400).json({ message: "OTP expired" });
+    }
 
     // Update user status to active
     await userQuery(
@@ -226,10 +235,13 @@ const login = async (req, res) => {
       // Generate OTP
       const otp = crypto.randomInt(100000, 999999).toString();
 
-      // Save the OTP in the session (for session-based OTP)
-      req.session.otp = otp;
-      req.session.email = user.email; // Store the username for OTP verification
-      req.session.otpTimestamp = Date.now(); // Store timestamp for OTP validity
+      // Save the OTP and timestamp in the database
+      const otpTimestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+      // replace the OTP and timestamp in the database
+
+      const updateOtpQuery = `UPDATE users SET otp = ?, otpTimestamp = ? WHERE id = ?`;
+      await userQuery(updateOtpQuery, [otp, otpTimestamp, user.id]);
 
       // Send OTP via email
       const mailOptions = {
@@ -257,7 +269,6 @@ const login = async (req, res) => {
     });
 
     // Set the JWT token as a session cookie
-    req.session.token = token;
     res.cookie("token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

@@ -5,6 +5,7 @@ const router = express.Router();
 
 router.get("/remedies", verifyUser, remediesController.getAllRemedies);
 router.get("/remedies/:id", verifyUser, remediesController.getRemedies);
+router.get("/remedies/country/:countryName", verifyUser, remediesController.getRemediesByCountryName);
 router.post("/remedies", verifyUser, remediesController.postRemedies);
 router.get("/remedies/category/:id", verifyUser, remediesController.getRemediesByCategoryId);
 router.get("/trending/remedies", verifyUser, remediesController.getTrendingRemidies);
