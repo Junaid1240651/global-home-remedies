@@ -15,5 +15,6 @@ router.post("/remedies/bookmark/:id", verifyUser, remediesController.bookmarkRem
 router.post("/remedies/bookmark", verifyUser, remediesController.getBookmarkRemedies);
 router.patch("/remedies/:id", verifyUser, remediesController.updateRemedies);
 router.delete("/remedies/:id", verifyUser, remediesController.deleteRemedies);
+router.delete("/remedies/bookmark/:id", verifyUser, remediesController.removeBookmarkRemedies);
 
 export default router;

@@ -559,6 +559,53 @@ const getBookmarkRemedies = async (req, res) => {
   }
 };
 
+const removeBookmarkRemedies = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user;
+
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Remedy ID is required" });
+  }
+
+  // Validate input
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res.status(400).json({
+      error: "Invalid remedy ID. It should be a positive integer.",
+    });
+  }
+
+  try {
+    // Check if the remedy exists
+    const remedyCheckQuery = "SELECT * FROM remedies WHERE id = ?";
+    const remedyResult = await userQuery(remedyCheckQuery, [id]);
+
+    // If the remedy is not found
+    if (remedyResult.length === 0) {
+      return res.status(404).json({ error: "Remedy not found." });
+    }
+
+    // Check if the user has already bookmarked the remedy
+    const bookmarkCheckQuery = "SELECT * FROM bookmarks WHERE user_id = ? AND remedy_id = ?";
+    const bookmarkResult = await userQuery(bookmarkCheckQuery, [userId, id]);
+
+    // If the user has not bookmarked the remedy
+    if (bookmarkResult.length === 0) {
+      return res.status(400).json({ error: "You have not bookmarked this remedy." });
+    }
+
+    // If the user has bookmarked the remedy, delete the bookmark
+    const deleteQuery = "DELETE FROM bookmarks WHERE user_id = ? AND remedy_id = ?";
+    await userQuery(deleteQuery, [userId, id]);
+
+    res.status(200).json({ message: `You have removed bookmark from remedy ${id}.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while removing bookmark from remedy", details: err });
+  }
+}
+
 const postRemedies = async (req, res) => {
   const {
     category_id,
@@ -823,4 +870,5 @@ export default {
   bookmarkRemedies,
   getBookmarkRemedies,
   getRemediesByCountryName,
+  removeBookmarkRemedies
 };

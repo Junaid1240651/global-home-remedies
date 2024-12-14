@@ -3,12 +3,7 @@ import userQuery from "../utils/helper/dbHelper.js";
 
 const getReviews = async (req, res) => {
     const { id } = req.params;
-  const loggedInUserId = req.user?.userId; 
-
-  // Check if logged-in user ID is available
-  if (!loggedInUserId) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+console.log(id);
 
   // Validate `id` as a positive integer
   if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
@@ -19,22 +14,37 @@ const getReviews = async (req, res) => {
 
   try {
     // Fetch the review by ID and check if it belongs to the logged-in user
-    const review = await userQuery(
-      "SELECT * FROM reviews WHERE id = ? AND user_id = ?",
-      [id, loggedInUserId]
-    );
+    const reviewQuery = `
+      SELECT 
+        reviews.*,
+        users.id AS user_id,
+        users.first_name AS user_first_name,
+        users.last_name AS user_last_name,
+        users.profile_picture AS user_profile_picture,
+        users.email AS user_email,
+        users.username AS user_username
+      FROM 
+        reviews
+      JOIN 
+        users 
+      ON 
+        reviews.user_id = users.id
+      WHERE 
+        reviews.remedy_id = ?
+    `;
+    const review = await userQuery(reviewQuery, [id]);
 
     // Check if the review exists and belongs to the logged-in user
     if (review.length === 0) {
       return res
         .status(404)
         .json({
-          error: "Review not found or you do not have permission to view it.",
+          error: "Review not found",
         });
     }
 
     // Send the review data
-    res.json({ review: review[0] });
+    res.status(200).json({review: review});
   } catch (error) {
     console.error(error);
     res
@@ -47,11 +57,8 @@ const getReviews = async (req, res) => {
 };
 
 const postReviews = async (req, res) => {
-  const { remedy_id, rating, review } = req.body;
+  const { remedy_id, rating, review, review_title } = req.body;
     const user_id = req.user.userId;
-    console.log(user_id);
-    console.log(req.body);
-    
     
   // Validate required fields
   if (!remedy_id || !user_id || !rating || _.isEmpty(review)) {
@@ -69,6 +76,10 @@ const postReviews = async (req, res) => {
     });
   }
 
+  if (review_title === "" || review_title === undefined || review === "" || review === undefined) {
+    return res.status(400).json({ message: "Review title and Review are required" });
+  }
+
   // Validate rating range
   if (rating < 1 || rating > 5) {
     return res.status(400).json({
@@ -77,22 +88,27 @@ const postReviews = async (req, res) => {
   }
 
   try {
-    // Check if the user exists
-    const userCheck = await userQuery("SELECT id FROM users WHERE id = ?", [user_id]);
-    if (userCheck.length === 0) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
+    
     // Check if the remedy exists
     const remedyCheck = await userQuery("SELECT id FROM remedies WHERE id = ?", [remedy_id]);
     if (remedyCheck.length === 0) {
       return res.status(404).json({ message: "Remedy not found" });
     }
 
+    // Check if the user has already reviewed the remedy
+    const reviewCheck = await userQuery(
+      "SELECT id FROM reviews WHERE remedy_id = ? AND user_id = ?",
+      [remedy_id, user_id]
+    );
+
+    if (reviewCheck.length > 0) {
+      return res.status(409).json({ message: "You have already reviewed this remedy" });
+    }
+
     // Insert the review into the database
     const result = await userQuery(
-      "INSERT INTO reviews (remedy_id, user_id, rating, review) VALUES (?, ?, ?, ?)",
-      [remedy_id, user_id, rating, review]
+      "INSERT INTO reviews (remedy_id, user_id, rating, review, review_title) VALUES (?, ?, ?, ?, ?)",
+      [remedy_id, user_id, rating, review, review_title]
     );
 
     res.status(201).json({
@@ -107,7 +123,7 @@ const postReviews = async (req, res) => {
 
 const updateReviews = async (req, res) => {
   const { id } = req.params; // Review ID to be updated
-  const { rating, review } = req.body;
+  const { rating, review, review_title } = req.body;
   const loggedInUserId = req.user?.userId; // Assumes `req.user.id` contains the logged-in user's ID
 
   // Check if logged-in user ID is available
@@ -117,7 +133,7 @@ const updateReviews = async (req, res) => {
     if (!id || id === "" || id === undefined) {
     return res.status(400).json({ message: "Review ID is required" });
     }
-    if (_.isEmpty(rating) && _.isEmpty(review)) {
+    if (_.isEmpty(rating) && _.isEmpty(review) && _.isEmpty(review_title)) {
     return res.status(400).json({ message: "At least one field is required" });
     }
 
@@ -171,6 +187,10 @@ const updateReviews = async (req, res) => {
       fieldsToUpdate.push("review = ?");
       values.push(review);
     }
+    if (!_.isEmpty(review_title)) { // Only add review if it’s not empty
+      fieldsToUpdate.push("review_title = ?");
+      values.push(review_title);
+    }
     values.push(id); // Add `id` as the last value for WHERE clause
 
     // Update the review in the database
@@ -186,7 +206,7 @@ const updateReviews = async (req, res) => {
         .json({ message: "Review not found or no change in data" });
     }
 
-    res.json({ message: `Review ${id} updated successfully` });
+    res.status(200).json({ message: "Review updated successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error: error.message });
