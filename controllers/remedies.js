@@ -48,7 +48,12 @@ const getAllRemedies = async (req, res) => {
           SELECT 1
           FROM dislikes d
           WHERE d.user_id = ? AND d.remedy_id = r.id
-        ) AS dislikes
+        ) AS dislikes,
+         (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
@@ -130,7 +135,12 @@ const getRemedies = async (req, res) => {
           SELECT 1
           FROM dislikes d
           WHERE d.user_id = ? AND d.remedy_id = r.id
-        ) AS dislikes
+        ) AS dislikes,
+         (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
@@ -191,7 +201,12 @@ const getRemediesByCategoryId = async (req, res) => {
         u.mobile_number,
         (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
         (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
-        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike,
+        (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
@@ -249,7 +264,12 @@ const getRemediesByCountryName = async (req, res) => {
         u.mobile_number,
         (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
         (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
-        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike,
+        (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
@@ -299,7 +319,12 @@ const getTrendingRemidies = async (req, res) => {
         u.last_name,
         (SELECT EXISTS (SELECT 1 FROM likes l WHERE l.user_id = ? AND l.remedy_id = r.id)) AS isLike,
         (SELECT EXISTS (SELECT 1 FROM bookmarks b WHERE b.user_id = ? AND b.remedy_id = r.id)) AS isBookmark,
-        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike
+        (SELECT EXISTS (SELECT 1 FROM dislikes d WHERE d.user_id = ? AND d.remedy_id = r.id)) AS isDislike,
+        (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
@@ -528,7 +553,12 @@ const getBookmarkRemedies = async (req, res) => {
         u.last_name,
         u.country, 
         u.email, 
-        u.mobile_number
+        u.mobile_number,
+        (SELECT
+           AVG(reviews.rating)
+         FROM reviews
+         WHERE reviews.remedy_id = r.id
+        ) AS average_rating
       FROM remedies r
       JOIN bookmarks b ON r.id = b.remedy_id
       JOIN categories c ON r.category_id = c.id
@@ -824,7 +854,6 @@ const deleteRemedies = async (req, res) => {
     const remedyCheckQuery =
       "SELECT * FROM remedies WHERE id = ?";
     const remedyResult = await userQuery(remedyCheckQuery, [id]);
-console.log(id);
 
     // If the remedy is not found
     if (remedyResult.length === 0) {
