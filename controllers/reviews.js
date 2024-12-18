@@ -135,15 +135,10 @@ const updateReviews = async (req, res) => {
     if (!id || id === "" || id === undefined) {
     return res.status(400).json({ message: "Review ID is required" });
     }
-    if (_.isEmpty(rating) && _.isEmpty(review) && _.isEmpty(review_title)) {
-    return res.status(400).json({ message: "At least one field is required" });
-    }
 
-  // Validate required fields
-  if (_.isNil(rating) && _.isEmpty(review)) { // Check for null or undefined rating with _.isNil
-    return res
-      .status(400)
-      .json({ message: "At least one field (rating or review) is required" });
+  // Ensure at least one field is provided for updating
+  if (_.isNil(rating) && _.isEmpty(review) && _.isEmpty(review_title)) {
+    return res.status(400).json({ message: "At least one field is required" });
   }
 
   // Validate `id` as an integer
@@ -152,13 +147,19 @@ const updateReviews = async (req, res) => {
   }
 
   // Validate `rating` if provided
-  if (
-    !_.isNil(rating) && // Only validate if rating is provided (not null or undefined)
-    (!_.isInteger(_.toNumber(rating)) || rating < 1 || rating > 5)
-  ) {
-    return res
-      .status(400)
-      .json({ message: "Rating must be an integer between 1 and 5" });
+  if (!_.isNil(rating)) {
+    const ratingNum = parseFloat(rating);
+    if (
+      isNaN(ratingNum) ||
+      ratingNum < 1.0 ||
+      ratingNum > 5.0 ||
+      !/^\d+(\.\d{1})?$/.test(rating.toString())
+    ) {
+      return res.status(400).json({
+        message:
+          "Rating must be a number between 1.0 and 5.0, with up to 1 decimal place",
+      });
+    }
   }
 
   try {
@@ -187,11 +188,11 @@ const updateReviews = async (req, res) => {
     }
     if (!_.isEmpty(review)) { // Only add review if it’s not empty
       fieldsToUpdate.push("review = ?");
-      values.push(review);
+      values.push(review.trim());
     }
     if (!_.isEmpty(review_title)) { // Only add review if it’s not empty
       fieldsToUpdate.push("review_title = ?");
-      values.push(review_title);
+      values.push(review_title.trim());
     }
     values.push(id); // Add `id` as the last value for WHERE clause
 
