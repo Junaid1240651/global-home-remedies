@@ -53,12 +53,17 @@ const getAllRemedies = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.status = 'approved'`,
-      [loggedInUserId, loggedInUserId, loggedInUserId]
+      [loggedInUserId, loggedInUserId, loggedInUserId, loggedInUserId]
     );
 
     // Check if the user has any remedies
@@ -140,12 +145,17 @@ const getRemedies = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.id = ? AND r.status = 'approved'`,
-      [loggedInUserId, loggedInUserId, loggedInUserId, id]
+      [loggedInUserId, loggedInUserId, loggedInUserId, loggedInUserId, id]
     );
 
     // Check if the remedy exists and belongs to the logged-in user
@@ -206,12 +216,17 @@ const getRemediesByCategoryId = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.category_id = ? AND r.status = 'approved'`,
-      [loggedInUserId, loggedInUserId, loggedInUserId, id]
+      [loggedInUserId, loggedInUserId, loggedInUserId, loggedInUserId, id]
     );
     if (remedies.length === 0) {
       return res
@@ -269,13 +284,18 @@ const getRemediesByCountryName = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.status = 'approved' AND u.country = ?
       ORDER BY r.likes DESC`,
-      [loggedInUserId, loggedInUserId, loggedInUserId, countryName]
+      [loggedInUserId, loggedInUserId, loggedInUserId, loggedInUserId, countryName]
     );
 
     if (remedies.length === 0) {
@@ -324,14 +344,19 @@ const getTrendingRemidies = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
       WHERE r.status = 'approved'
       ORDER BY r.likes DESC
       LIMIT 100`,
-      [userId, userId, userId]
+      [userId, userId, userId, userId]
     );
 
     if (trendingRemedies.length === 0) {
@@ -558,7 +583,12 @@ const getBookmarkRemedies = async (req, res) => {
            AVG(reviews.rating)
          FROM reviews
          WHERE reviews.remedy_id = r.id
-        ) AS average_rating
+        ) AS average_rating,
+         EXISTS (
+          SELECT 1
+          FROM reviews
+          WHERE reviews.user_id = ? AND reviews.remedy_id = r.id
+        ) AS isReview
       FROM remedies r
       JOIN bookmarks b ON r.id = b.remedy_id
       JOIN categories c ON r.category_id = c.id
@@ -566,7 +596,7 @@ const getBookmarkRemedies = async (req, res) => {
       WHERE b.user_id = ?
     `;
 
-    const bookmarkedRemedies = await userQuery(query, [userId]);
+    const bookmarkedRemedies = await userQuery(query, [userId,userId]);
 
     // Append `is_favorite: true` to each remedy object
     const response = bookmarkedRemedies.map((remedy) => ({

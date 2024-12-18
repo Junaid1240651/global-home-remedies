@@ -3,7 +3,6 @@ import userQuery from "../utils/helper/dbHelper.js";
 
 const getReviews = async (req, res) => {
     const { id } = req.params;
-console.log(id);
 
   // Validate `id` as a positive integer
   if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
@@ -61,30 +60,33 @@ const postReviews = async (req, res) => {
     const user_id = req.user.userId;
     
   // Validate required fields
-  if (!remedy_id || !user_id || !rating || _.isEmpty(review)) {
-    return res.status(400).json({ message: "All required fields" });
+  if (!remedy_id || !user_id || rating === undefined || !review) {
+    return res.status(422).json({ message: "Missing required fields: remedy_id, user_id, rating, and review" });
   }
 
-  // Validate integer input
+  // Validate integer input for remedy_id and user_id
+  if (!Number.isInteger(Number(remedy_id)) || !Number.isInteger(Number(user_id))) {
+    return res.status(422).json({
+      message: "Invalid input: remedy_id and user_id must be integers",
+    });
+  }
+
+  // Validate rating: float with at most 2 decimals, and range between 1.00 and 5.00
+  const ratingNum = parseFloat(rating);
   if (
-    !_.isInteger(_.toNumber(remedy_id)) ||
-    !_.isInteger(_.toNumber(user_id)) ||
-    !_.isInteger(_.toNumber(rating))
+    isNaN(ratingNum) ||
+    ratingNum < 1.0 ||
+    ratingNum > 5.0 ||
+    !/^\d+(\.\d{1})?$/.test(rating.toString())
   ) {
-    return res.status(400).json({
-      message: "Invalid input: remedy_id, user_id, and rating must be integers",
+    return res.status(422).json({
+      message: "Rating must be a number between 1.00 and 5.00, with up to 2 decimal places",
     });
   }
 
-  if (review_title === "" || review_title === undefined || review === "" || review === undefined) {
-    return res.status(400).json({ message: "Review title and Review are required" });
-  }
-
-  // Validate rating range
-  if (rating < 1 || rating > 5) {
-    return res.status(400).json({
-      message: "Rating must be a number between 1 and 5",
-    });
+  // Validate review and review_title
+  if (!review_title?.trim() || !review.trim()) {
+    return res.status(422).json({ message: "Review title and review are required" });
   }
 
   try {
@@ -108,7 +110,7 @@ const postReviews = async (req, res) => {
     // Insert the review into the database
     const result = await userQuery(
       "INSERT INTO reviews (remedy_id, user_id, rating, review, review_title) VALUES (?, ?, ?, ?, ?)",
-      [remedy_id, user_id, rating, review, review_title]
+      [remedy_id, user_id, ratingNum, review.trim(), review_title.trim()]
     );
 
     res.status(201).json({
