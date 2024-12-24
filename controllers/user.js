@@ -81,7 +81,7 @@ const signup = async (req, res) => {
       from: "Global Home Remedies",
       to: email,
       subject: "Global Home Remedies OTP ",
-      text: `Your OTP for login is ${otp}. It is valid for 5 minutes.`,
+      html: getHtmlContent(otp, first_name, last_name),
     };
 
     transporter.sendMail(mailOptions, (err, info) => {
