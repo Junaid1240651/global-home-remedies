@@ -2,13 +2,15 @@ import dotenv from "dotenv";
 dotenv.config();
 import passport from 'passport';
 import googleAuth from "./socialAuth/googleAuth.js";
+import fs from 'fs';
 import express from "express";
+import https from 'https';
 import cors from "cors";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import { dbConnection } from "./db/connection.js";
-import userController from "./controllers/user.js"; 
+import userController from "./controllers/user.js";
 
 // Route imports
 import userRoutes from "./routes/user.js";
@@ -24,6 +26,11 @@ import fileUpload from "./routes/fileUpload.js";
 const app = express();
 const port = process.env.PORT || 3000;
 const con = dbConnection();
+
+const options = {
+  key: fs.readFileSync('/etc/letsencrypt/live/responseangelaccess.com/privkey.pem'), // Path to private key
+  cert: fs.readFileSync('/etc/letsencrypt/live/responseangelaccess.com/fullchain.pem') // Path to certificate
+};
 
 // Middleware
 if (process.env.NODE_ENV !== "production") {
@@ -80,6 +87,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+//app.listen(port, () => {
+  //console.log(`Server is running on port ${port}`);
+//});
+https.createServer(options, app).listen(port, () => {
+  console.log(`Secure server running at ${port}`);
 });
