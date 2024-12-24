@@ -361,6 +361,74 @@ function getHtmlContent(otp,first_name,last_name) {
   `;
 }
 
+const resentOTP = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  try {
+    // Check if the user with the provided email exists
+    const userResults = await userQuery(
+      `SELECT * FROM users WHERE email = ?`,
+      [email]
+    );
+
+    const user = userResults[0];
+    if (!user) {
+      return res.status(404).json({ message: "Invalid email" });
+    }
+
+    // Check if user account is active
+    if (user.status !== "active") {
+      let otp;
+
+      // Check if user already has an OTP
+      if (user.otp) {
+        const otpTimestamp = new Date(user.otpTimestamp).getTime();
+        const currentTime = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const otpExpirationTime = 5 * 60 * 1000; // 5 minutes
+        
+        if (currentTime - otpTimestamp > otpExpirationTime) {
+          // OTP expired, generate a new one
+          otp = crypto.randomInt(100000, 999999).toString();
+        } else {
+          // Use the existing OTP
+          otp = user.otp;
+        }
+      } else {
+        // Generate a new OTP if none exists
+        console.log("No existing OTP, generating a new one");
+        otp = crypto.randomInt(100000, 999999).toString();
+      }
+
+      // Save the OTP and timestamp in the database
+      const otpTimestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+      const updateOtpQuery = `UPDATE users SET otp = ?, otpTimestamp = ? WHERE id = ?`;
+      await userQuery(updateOtpQuery, [otp, otpTimestamp, user.id]);
+
+      // Send OTP via email
+      const mailOptions = {
+        from: "Global Home Remedies",
+        to: user.email,
+        subject: "Global Home Remedies OTP",
+        html: getHtmlContent(otp, user.first_name, user.last_name),
+      };
+
+      await transporter.sendMail(mailOptions);
+
+      return res.status(200).json({ message: "OTP sent to your email" });
+    }
+
+    return res.status(200).json({ message: "User is already verified" });
+  } catch (err) {
+    console.error("Error during OTP verification and registration:", err);
+    res.status(500).json({ message: "Error while verifying OTP and completing signup" });
+  }
+};
+
 const getProfile = async (req, res) => {
   const { userId } = req.user;
 
@@ -715,6 +783,7 @@ export default {
   forgotPassword,
   resetPassword,
   verifyOtpAndCompleteSignup,
-  googleAuthSignUp
+  googleAuthSignUp,
+  resentOTP
 };
 

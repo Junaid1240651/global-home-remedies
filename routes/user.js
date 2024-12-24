@@ -11,5 +11,6 @@ router.delete("/deleteAccount", verifyUser, userController.deleteAccount);
 router.post("/forgotPassword", userController.forgotPassword);
 router.post("/resetPassword", userController.resetPassword);
 router.post("/verify_otp", userController.verifyOtpAndCompleteSignup);
+router.post("/resend_otp", userController.resentOTP);
 
 export default router;
