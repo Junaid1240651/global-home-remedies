@@ -248,7 +248,7 @@ const login = async (req, res) => {
         from: "Global Home Remedies",
         to: user.email,
         subject: "Global Home Remedies OTP ",
-        text: `Your OTP for login is ${otp}. It is valid for 5 minutes.`,
+        html: getHtmlContent(otp,user.first_name,user.last_name),
       };
 
       await transporter.sendMail(mailOptions);
@@ -285,6 +285,81 @@ const login = async (req, res) => {
   }
 }
 };
+
+function getHtmlContent(otp,first_name,last_name) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background-color: #f4f4f9;
+        }
+        .email-container {
+          max-width: 600px;
+          margin: 20px auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #4CAF50;
+          color: #ffffff;
+          text-align: center;
+          padding: 20px;
+          font-size: 24px;
+          font-weight: bold;
+        }
+        .content {
+          padding: 20px;
+          color: #333333;
+          line-height: 1.6;
+          text-align: center;
+        }
+        .otp {
+          font-size: 28px;
+          font-weight: bold;
+          color: #4CAF50;
+          margin: 20px 0;
+        }
+        .footer {
+          background-color: #f4f4f9;
+          color: #777777;
+          font-size: 12px;
+          text-align: center;
+          padding: 15px;
+        }
+        .footer a {
+          color: #4CAF50;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="email-container">
+        <div class="header">Your OTP Code</div>
+        <div class="content">
+          <p>Hello, ${first_name} ${last_name}!</p>
+          <p>Your one-time password (OTP) for login is:</p>
+          <div class="otp">${otp}</div>
+          <p>This OTP is valid for the next <strong>5 minutes</strong>. Please do not share it with anyone.</p>
+        </div>
+        <div class="footer">
+          If you didn't request this OTP, please ignore this email or contact our support team.  
+          <br><br>
+          <a href="#">Visit Our Support Center</a>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
 
 const getProfile = async (req, res) => {
   const { userId } = req.user;
