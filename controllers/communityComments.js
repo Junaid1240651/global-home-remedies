@@ -2,37 +2,56 @@ import _ from "lodash";
 import userQuery from "../utils/helper/dbHelper.js";
 
 const getCommunityComments = async (req, res) => {
-  const { id } = req.params; // Comment ID
+  const { id } = req.params; // Post ID
   const { userId } = req.user; // User ID from the logged-in user's JWT token
 
   // Validate input
   if (!id || !userId) {
     return res.status(400).json({
-      message: "Comment ID and user ID are required.",
+      message: "Post ID and user ID are required.",
     });
   }
 
   try {
-    // Fetch the comment by ID
-    const commentResult = await userQuery(
-      "SELECT * FROM community_comments WHERE id = ?",
-      [id]
-    );
+    // Fetch the comment by ID and get user details belonging to the comment
 
+    const commentQuery = `
+      SELECT 
+        c.*, 
+        u.username, 
+        u.profile_picture, 
+        u.first_name, 
+        u.last_name,
+        u.email,
+        EXISTS(
+          SELECT 1 
+          FROM comment_likes cl
+          WHERE cl.comment_id = c.id AND cl.user_id = ?
+        ) AS isLiked,
+        EXISTS(
+          SELECT 1
+          FROM comment_dislikes cd
+          WHERE cd.comment_id = c.id AND cd.user_id = ?
+        ) AS isDisliked
+      FROM 
+        community_comments c
+      INNER JOIN 
+        users u 
+      ON 
+        c.user_id = u.id
+      WHERE 
+        c.post_id = ?
+      ORDER BY 
+        c.created_at DESC`;
+
+    const commentResult = await userQuery(commentQuery, [userId, userId, id]);
     // If no comment found, return a 404 response
     if (commentResult.length === 0) {
       return res.status(404).json({ message: "Comment not found." });
     }
 
-    // Check if the comment belongs to the logged-in user
-    if (commentResult[0].user_id !== userId) {
-      return res.status(403).json({
-        error: "Forbidden: You cannot access this comment.",
-      });
-    }
-
     // Return the comment details
-    res.json({ comment: commentResult[0] });
+    res.json({ comment: commentResult });
   } catch (error) {
     res.status(500).json({
       message: "Database error while retrieving comment",
@@ -174,10 +193,144 @@ const deleteCommunityComments = async (req, res) => {
   }
 };
 
+const likeCommunityComment = async (req, res) => {
+  const { id } = req.params; // Comment ID
+  const { userId } = req.user; // User ID
+
+  // Check if the comment ID is provided
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Comment ID is required" });
+  }
+
+  // Validate input ID
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res
+      .status(400)
+      .json({ error: "Invalid comment ID. It should be a positive integer." });
+  }
+
+  try {
+    // Check if the comment exists
+    const commentCheckQuery =
+      "SELECT * FROM community_comments WHERE id = ?";
+    const commentResult = await userQuery(commentCheckQuery, [id]);
+
+    // If the comment doesn't exist
+    if (commentResult.length === 0) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    // Check if the user has already liked the comment
+    const likeCheckQuery =
+      "SELECT * FROM comment_likes WHERE comment_id = ? AND user_id = ?";
+    const likeCheckResult = await userQuery(likeCheckQuery, [id, userId]);
+
+    // If the user has already liked the comment
+    if (likeCheckResult.length > 0) {
+      return res.status(400).json({ error: "You have already liked this comment." });
+    }
+
+    // If the user has not liked the comment, insert a new like
+    const likeQuery = "INSERT INTO comment_likes (comment_id, user_id) VALUES (?, ?)";
+    await userQuery(likeQuery, [id, userId]);
+
+    //update the dislike table if the user has like the comment
+    const dislikeCheckQuery = "SELECT * FROM comment_dislikes WHERE comment_id = ? AND user_id = ?";
+    const dislikeCheckResult = await userQuery(dislikeCheckQuery, [id, userId]);
+
+    if (dislikeCheckResult.length > 0) {
+      const dislikeDeleteQuery = "DELETE FROM comment_dislikes WHERE comment_id = ? AND user_id = ?";
+      await userQuery(dislikeDeleteQuery, [id, userId]);
+    }
+
+    //update the total likes in the comments table and decrease the dislikes if the user has liked the comment
+
+    if(dislikeCheckResult.length > 0){
+      const updateQuery = "UPDATE community_comments SET likes = likes + 1, dislikes = dislikes - 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    } else {
+      const updateQuery = "UPDATE community_comments SET likes = likes + 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    }
+
+    res.json({ message: `You have liked comment ${id}.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while liking comment", details: err });
+  }
+}
+
+const dislikeCommunityComment = async (req, res) => {
+  const { id } = req.params; // Comment ID
+  const { userId } = req.user; // User ID from the logged-in JWT token
+
+  // Validate Comment ID
+  if (!id || isNaN(Number(id)) || Number(id) <= 0) {
+    return res
+      .status(400)
+      .json({ error: "Invalid comment ID. It should be a positive integer." });
+  }
+
+  try {
+    // Check if the comment exists
+    const commentCheckQuery = "SELECT * FROM community_comments WHERE id = ?";
+    const [comment] = await userQuery(commentCheckQuery, [id]);
+
+    if (!comment) {
+      return res.status(404).json({ error: "Comment not found." });
+    }
+
+    // Check if the user has already disliked the comment
+    const dislikeCheckQuery =
+      "SELECT * FROM comment_dislikes WHERE comment_id = ? AND user_id = ?";
+    const [existingDislike] = await userQuery(dislikeCheckQuery, [id, userId]);
+
+    if (existingDislike) {
+      return res
+        .status(400)
+        .json({ error: "You have already disliked this comment." });
+    }
+
+    // Check if the user has liked the comment
+
+    const likeCheckQuery = "SELECT * FROM comment_likes WHERE comment_id = ? AND user_id = ?";
+    const likeResult = await userQuery(likeCheckQuery, [id, userId]);
+
+    if (likeResult.length > 0) {
+      const likeDeleteQuery = "DELETE FROM comment_likes WHERE comment_id = ? AND user_id = ?";
+      await userQuery(likeDeleteQuery, [id, userId]);
+    }
+
+    // Insert the new dislike
+    const dislikeQuery =
+      "INSERT INTO comment_dislikes (comment_id, user_id) VALUES (?, ?)";
+    await userQuery(dislikeQuery, [id, userId]);
+
+    // Update the total dislikes in the comments table
+    if(likeResult.length > 0){
+      const updateQuery = "UPDATE community_comments SET dislikes = dislikes + 1, likes = likes - 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    } else {
+      const updateQuery = "UPDATE community_comments SET dislikes = dislikes + 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    }
+
+    res.json({ message: `You have disliked comment ${id}.` });
+  } catch (err) {
+    console.error("Error while disliking comment:", err);
+    res
+      .status(500)
+      .json({ error: "Database error while disliking comment", details: err });
+  }
+};
 
 export default {
   getCommunityComments,  
   postCommunityComments,
   updateCommunityComments,
   deleteCommunityComments,
+  likeCommunityComment,
+  dislikeCommunityComment
 };

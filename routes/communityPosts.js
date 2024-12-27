@@ -8,5 +8,6 @@ router.get("/community_posts/:id",verifyUser, communityPostsController.getCommun
 router.post("/community_posts",verifyUser, communityPostsController.postCommunityPosts);
 router.patch("/community_posts/:id",verifyUser, communityPostsController.updateCommunityPosts);
 router.delete("/community_posts/:id",verifyUser, communityPostsController.deleteCommunityPosts);
-
+router.post("/community_posts/like/:id", verifyUser, communityPostsController.communityPostLike);
+router.post("/community_posts/dislike/:id", verifyUser, communityPostsController.communityPostDislike);
 export default router;
