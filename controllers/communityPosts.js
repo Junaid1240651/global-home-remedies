@@ -9,14 +9,32 @@ const getAllCommunityPosts = async (req, res) => {
   }
 
   try {
-    // Fetch all community posts belonging to the logged-in user
-    const posts = await userQuery(
-      "SELECT * FROM community_posts WHERE user_id = ?",
-      [loggedInUserId]
-    );
+    // Fetch all community posts and user details of the post owner
+    // Fetch all community posts with user details and check if the logged-in user has liked each post
+    const query = `
+      SELECT 
+        p.*, 
+        u.username, 
+        u.profile_picture, 
+        u.email, 
+        u.first_name, 
+        u.last_name,
+        EXISTS(
+          SELECT 1 
+          FROM post_likes l
+          WHERE l.post_id = p.id AND l.user_id = ?
+        ) AS isLiked
+      FROM 
+        community_posts p
+      INNER JOIN 
+        users u 
+      ON 
+        p.user_id = u.id`;
+
+    const posts = await userQuery(query, [loggedInUserId]); // Pass the logged-in user ID to check for likes
 
     // Check if the user has any posts
-    if (posts.length === 0) {
+    if (!posts || posts.length === 0) {
       return res
         .status(404)
         .json({ message: "No community posts found for this user." });
@@ -50,11 +68,31 @@ const getCommunityPosts = async (req, res) => {
   }
 
   try {
-    // Query to fetch the post based on ID and check if it belongs to the logged-in user
-    const post = await userQuery(
-      "SELECT * FROM community_posts WHERE id = ? AND user_id = ?",
-      [id, loggedInUserId]
-    );
+    // Query to fetch the post based on ID and check if it the logged-in user has liked it
+    
+    const query = `
+      SELECT 
+        p.*, 
+        u.username, 
+        u.profile_picture, 
+        u.email, 
+        u.first_name, 
+        u.last_name,
+        EXISTS(
+          SELECT 1 
+          FROM post_likes l
+          WHERE l.post_id = p.id AND l.user_id = ?
+        ) AS isLiked
+      FROM 
+        community_posts p
+      INNER JOIN 
+        users u 
+      ON 
+        p.user_id = u.id
+      WHERE 
+        p.id = ?`;
+
+    const post = await userQuery(query, [loggedInUserId, id]);
 
     // Check if the post exists
     if (post.length === 0) {
@@ -240,11 +278,160 @@ const deleteCommunityPosts = async (req, res) => {
   }
 };
 
+const communityPostLike = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user; 
 
+  // Check if the post ID is provided
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Community Post ID is required" });
+  }
+
+  // Validate input ID
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res
+      .status(400)
+      .json({ error: "Invalid post ID. It should be a positive integer." });
+  }
+
+  try {
+    // Check if the community post exists and belongs to the logged-in user
+    const postCheckQuery =
+      "SELECT * FROM community_posts WHERE id = ?";
+    const postResult = await userQuery(postCheckQuery, [id]);
+
+    // If the post doesn't exist
+    if (postResult.length === 0) {
+      return res.status(404).json({ error: "Community Post not found." });
+    }
+
+    // Check if the user has already liked the community post
+    const likeCheckQuery =
+      "SELECT * FROM post_likes WHERE post_id = ? AND user_id = ?";
+    const likeResult = await userQuery(likeCheckQuery, [id, userId]);
+
+    // If the user has already liked the post
+    if (likeResult.length > 0) {
+      return res
+        .status(400)
+        .json({ error: "You have already liked this community post." });
+    }
+
+    // If the user has not liked the post, insert the like
+    const likeInsertQuery =
+      "INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)";
+    await userQuery(likeInsertQuery, [id, userId]);
+    
+    // update the dislike table if the user has like the post
+
+    const dislikeCheckQuery = "SELECT * FROM post_dislikes WHERE post_id = ? AND user_id = ?";
+    const dislikeResult = await userQuery(dislikeCheckQuery, [id, userId]);
+
+    if (dislikeResult.length > 0) {
+      const dislikeDeleteQuery = "DELETE FROM post_dislikes WHERE post_id = ? AND user_id = ?";
+      await userQuery(dislikeDeleteQuery, [id, userId]);
+    }
+  
+    //update the total likes in the post table and decrement the dislikes if the user has liked the post
+    if (dislikeResult.length > 0) {
+      const updateQuery = "UPDATE community_posts SET likes = likes + 1, dislikes = dislikes - 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    } else {
+      const updateQuery = "UPDATE community_posts SET likes = likes + 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    }
+
+    res.json({ message: `Community Post ${id} liked successfully.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while liking post", details: err });
+  }
+}
+
+const communityPostDislike = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.user; 
+
+  // Check if the post ID is provided
+  if (!id || id === "" || id === undefined) {
+    return res.status(400).json({ message: "Community Post ID is required" });
+  }
+
+  // Validate input ID
+  if (!_.isInteger(_.toNumber(id)) || _.toNumber(id) <= 0) {
+    return res
+      .status(400)
+      .json({ error: "Invalid post ID. It should be a positive integer." });
+  }
+
+  try {
+    // Check if the community post exists and belongs to the logged-in user
+    const postCheckQuery =
+      "SELECT * FROM community_posts WHERE id = ?";
+    const postResult = await userQuery(postCheckQuery, [id]);
+
+    // If the post doesn't exist
+    if (postResult.length === 0) {
+      return res.status(404).json({ error: "Community Post not found." });
+    }
+
+    // Check if the user has already liked the post
+
+    const likeCheckQuery = "SELECT * FROM post_likes WHERE post_id = ? AND user_id = ?";
+    const likeResult = await userQuery(likeCheckQuery, [id, userId]);
+
+    // If the user has already liked the post
+    if (likeResult.length > 0) {
+      const likeDeleteQuery = "DELETE FROM post_likes WHERE post_id = ? AND user_id = ?";
+      await userQuery(likeDeleteQuery, [id, userId]);
+    }
+
+    // Check if the user has already disliked the community post
+    const dislikeCheckQuery =
+      "SELECT * FROM post_dislikes WHERE post_id = ? AND user_id = ?";
+    const dislikeResult = await userQuery(dislikeCheckQuery, [id, userId]);
+
+    // If the user has already disliked the post
+    if (dislikeResult.length > 0) {
+      return res
+        .status(400)
+        .json({ error: "You have already disliked this community post." });
+    }
+
+    // If the user has not disliked the post, insert the dislike
+    const dislikeInsertQuery =
+      "INSERT INTO post_dislikes (post_id, user_id) VALUES (?, ?)";
+    await userQuery(dislikeInsertQuery, [id, userId]);
+
+    //update the total dislikes in the post table and decrement the likes if the user has disliked the post
+    if (likeResult.length > 0) {
+      const updateQuery = "UPDATE community_posts SET dislikes = dislikes + 1, likes = likes - 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    } else {
+      const updateQuery = "UPDATE community_posts SET dislikes = dislikes + 1 WHERE id = ?";
+      await userQuery(updateQuery, [id]);
+    }
+
+    res.json({ message: `Community Post ${id} disliked successfully.` });
+  } catch (err) {
+    console.error(err);
+    res
+      .status(500)
+      .json({ error: "Database error while disliking post", details: err });
+  }
+
+}
 export default {
   getCommunityPosts,
   getAllCommunityPosts,
   postCommunityPosts,
   updateCommunityPosts,
   deleteCommunityPosts,
+  communityPostLike,
+  communityPostDislike
 };
+
+
+

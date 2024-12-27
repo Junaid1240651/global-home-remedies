@@ -28,8 +28,8 @@ const port = process.env.PORT || 3000;
 const con = dbConnection();
 
 const options = {
-  key: fs.readFileSync('/etc/letsencrypt/live/responseangelaccess.com/privkey.pem'), // Path to private key
-  cert: fs.readFileSync('/etc/letsencrypt/live/responseangelaccess.com/fullchain.pem') // Path to certificate
+  key: fs.readFileSync('/home/ec2-user/global-home-remedies/privkey.pem'), // Path to private key
+  cert: fs.readFileSync('/home/ec2-user/global-home-remedies/fullchain.pem') // Path to certificate
 };
 
 // Middleware

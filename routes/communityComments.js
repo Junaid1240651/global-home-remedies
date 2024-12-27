@@ -7,5 +7,6 @@ router.get("/community_comments/:id",verifyUser, communityCommentsController.get
 router.post("/community_comments",verifyUser, communityCommentsController.postCommunityComments);
 router.patch("/community_comments/:id",verifyUser, communityCommentsController.updateCommunityComments);
 router.delete("/community_comments/:id",verifyUser, communityCommentsController.deleteCommunityComments);
-
+router.post("/community_comments/like/:id", verifyUser, communityCommentsController.likeCommunityComment);
+router.post("/community_comments/dislike/:id", verifyUser, communityCommentsController.dislikeCommunityComment);
 export default router;
