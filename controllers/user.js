@@ -81,7 +81,7 @@ const signup = async (req, res) => {
       from: "Global Home Remedies",
       to: email,
       subject: "Global Home Remedies OTP ",
-      html: getHtmlContent(otp, first_name, last_name),
+      html: getHtmlContent(otp, first_name, last_name, 'Signup'),
     };
 
     transporter.sendMail(mailOptions, (err, info) => {
@@ -248,7 +248,7 @@ const login = async (req, res) => {
         from: "Global Home Remedies",
         to: user.email,
         subject: "Global Home Remedies OTP ",
-        html: getHtmlContent(otp,user.first_name,user.last_name),
+        html: getHtmlContent(otp,user.first_name,user.last_name, 'Login'),
       };
 
       await transporter.sendMail(mailOptions);
@@ -286,7 +286,7 @@ const login = async (req, res) => {
 }
 };
 
-function getHtmlContent(otp,first_name,last_name) {
+function getHtmlContent(otp,first_name,last_name, otp_type) {
   return `
     <!DOCTYPE html>
     <html>
@@ -346,7 +346,7 @@ function getHtmlContent(otp,first_name,last_name) {
         <div class="header">Your OTP Code</div>
         <div class="content">
           <p>Hello, ${first_name} ${last_name}!</p>
-          <p>Your one-time password (OTP) for login is:</p>
+          <p>Your one-time password (OTP) for ${otp_type} is:</p>
           <div class="otp">${otp}</div>
           <p>This OTP is valid for the next <strong>5 minutes</strong>. Please do not share it with anyone.</p>
         </div>
@@ -414,7 +414,7 @@ const resentOTP = async (req, res) => {
         from: "Global Home Remedies",
         to: user.email,
         subject: "Global Home Remedies OTP",
-        html: getHtmlContent(otp, user.first_name, user.last_name),
+        html: getHtmlContent(otp, user.first_name, user.last_name, 'Login'),
       };
 
       await transporter.sendMail(mailOptions);
@@ -620,74 +620,51 @@ const forgotPassword = async (req, res) => {
       .json({ message: "User with this email does not exist" });
   }
 
-  // Generate a unique token
-  const token = crypto.randomBytes(32).toString("hex");
+  // Generate OTP
+  const otp = crypto.randomInt(100000, 999999).toString();
 
-  // Save the token in forget_password table, replacing any existing entry for the same email
-  await userQuery(
-    `INSERT INTO forget_password (email, token, created_at) 
-     VALUES (?, ?, NOW()) 
-     ON DUPLICATE KEY UPDATE token = ?, created_at = NOW()`,
-    [email, token, token]
-  );
-
-  // Generate password reset URL
-  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${token}&email=${email}`;
+  // Save the OTP  only in the user table
+  
+  const updateOtpQuery = `UPDATE users SET forget_password_otp = ? WHERE email = ?`;
+  await userQuery(updateOtpQuery, [otp, email]);
 
   // Send email with reset link
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: email,
     subject: "Password Reset",
-    html: `
-      <h2>Password Reset Request</h2>
-      <p>Click the link below to reset your password:</p>
-      <a href="${resetLink}">Reset Password</a>
-      <p>This link will expire in 10 minutes.</p>
-    `,
+    html: getHtmlContent(otp, user[0].first_name, user[0].last_name, 'Reset Password'),
   };
 
-  transporter.sendMail(mailOptions, (err, info) => {
-    if (err) {
-      console.error("Error sending email:", err);
-      return res.status(500).json({ message: "Error sending reset email" });
-    }
-    res.status(200).json({ message: "Password reset email sent successfully" });
-  });
+  await transporter.sendMail(mailOptions);
+  return res.status(200).json({ message: "Password reset OTP sent to your email" });
 };
 
 const resetPassword = async (req, res) => {
-  const { email, token, newPassword } = req.body;
+  const { email, newPassword, otp } = req.body;
 
-  // Find the token and check creation time
-  const result = await userQuery(
-    `SELECT * FROM forget_password WHERE email = ? AND token = ?`,
-    [email, token]
-  );
+  // Check if the email exists in the database
+  const user = await userQuery(`SELECT * FROM users WHERE email = ?`, [email]);
 
-  if (result.length === 0) {
-    return res.status(400).json({ message: "Invalid or expired token" });
+  if (user.length === 0) {
+    return res
+      .status(404)
+      .json({ message: "User with this email does not exist" });
   }
 
-  // Check if the token is within 10 minutes of creation
-  const tokenAge = (new Date() - new Date(result[0].created_at)) / 1000 / 60; // Convert milliseconds to minutes
-  if (tokenAge > 10) {
-    return res.status(400).json({ message: "Token has expired" });
+  // Check if the OTP is valid
+
+  if (user[0].forget_password_otp != otp) {
+    return res.status(400).json({ message: "Invalid OTP" });
   }
 
-  // Hash the new password
+  // Update the password
+
   const hashedPassword = await bcrypt.hash(newPassword, 10);
+  const updatePasswordQuery = `UPDATE users SET password = ?, forget_password_otp = 1 WHERE email = ?`;
+  await userQuery(updatePasswordQuery, [hashedPassword, email]);
 
-  // Update the password in the users table
-  await userQuery(`UPDATE users SET password = ? WHERE email = ?`, [
-    hashedPassword,
-    email,
-  ]);
-
-  // Remove the token from the forget_password table
-  await userQuery(`DELETE FROM forget_password WHERE email = ?`, [email]);
-
-  res.status(200).json({ message: "Password reset successfully" });
+  return res.status(200).json({ message: "Password reset successfully" });
 };
 
 const googleAuthSignUp = async (req, res) => {
